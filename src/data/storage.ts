@@ -88,6 +88,26 @@ export const storage = {
     return data.users.find(user => user.email === email) || null;
   },
 
+  updateUser(userId: string, updates: Partial<Omit<User, 'id' | 'createdAt'>>): User | null {
+    const data = this.getData();
+    const userIndex = data.users.findIndex(user => user.id === userId);
+    if (userIndex < 0) return null;
+
+    const updatedUser = {
+      ...data.users[userIndex],
+      ...updates,
+    };
+
+    data.users[userIndex] = updatedUser;
+
+    if (data.currentUser && data.currentUser.id === userId) {
+      data.currentUser = updatedUser;
+    }
+
+    this.setData(data);
+    return updatedUser;
+  },
+
   deleteUser(userId: string): void {
     const data = this.getData();
     data.users = data.users.filter(user => user.id !== userId);

@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
-import { Plus, Calendar, Tag, DollarSign, FileText } from 'lucide-react';
+import { Plus, Calendar, DollarSign, FileText } from 'lucide-react';
 import { CATEGORIES } from '../types';
 import BudgetWarningModal from './BudgetWarningModal';
+
+interface ExpenseData {
+  description: string;
+  amount: number;
+  category: string;
+  date: string;
+}
 
 interface ExpenseFormProps {
   onAddExpense: (expense: {
@@ -25,7 +32,7 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ onAddExpense, loading, budget
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showWarningModal, setShowWarningModal] = useState(false);
-  const [pendingExpense, setPendingExpense] = useState<any>(null);
+  const [pendingExpense, setPendingExpense] = useState<ExpenseData | null>(null);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -75,7 +82,7 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ onAddExpense, loading, budget
     proceedWithExpense(expenseData);
   };
 
-  const proceedWithExpense = (expenseData: any) => {
+  const proceedWithExpense = (expenseData: ExpenseData) => {
     onAddExpense(expenseData);
 
     setFormData({

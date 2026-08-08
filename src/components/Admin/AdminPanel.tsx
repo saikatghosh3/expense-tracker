@@ -2,8 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Users, Trash2, Shield, Search, AlertTriangle } from 'lucide-react';
 import { storage, User } from '../../data/storage';
 
+interface UserWithStats extends User {
+  expense_count: number;
+  total_expenses: number;
+}
+
 const AdminPanel: React.FC = () => {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<UserWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);

@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Wallet, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { AlertCircle } from 'lucide-react';
 import { useAuth, AuthProvider } from './contexts/AuthContext';
 import AuthPage from './components/Auth/AuthPage';
-import Header from './components/Header';
+import Sidebar, { ViewKey } from './components/Layout/Sidebar';
+import TopBar from './components/Layout/TopBar';
+import Overview from './components/Dashboard/Overview';
+import ProfileView from './components/Profile/ProfileView';
 import BudgetTracker from './components/BudgetTracker';
 import ExpenseForm from './components/ExpenseForm';
 import ExpenseList from './components/ExpenseList';
@@ -11,12 +14,10 @@ import ExpenseFilters from './components/ExpenseFilters';
 import AdminPanel from './components/Admin/AdminPanel';
 import { useExpenses } from './hooks/useExpenses';
 
-//  Note Login component has the data to login :admin 
-
-
+// Note: Admin credentials — admin@admin.com / admin123
 
 function AppContent() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, isAdmin } = useAuth();
   const {
     expenses,
     budget,
@@ -29,7 +30,8 @@ function AppContent() {
 
   const [filteredExpenses, setFilteredExpenses] = useState(expenses);
   const [error, setError] = useState<string | null>(null);
-  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [activeView, setActiveView] = useState<ViewKey>('overview');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [filters, setFilters] = useState({
     category: 'all',
     startDate: '',
@@ -39,6 +41,12 @@ function AppContent() {
   useEffect(() => {
     applyFilters();
   }, [filters, expenses]);
+
+  useEffect(() => {
+    if (activeView === 'admin' && !isAdmin) {
+      setActiveView('overview');
+    }
+  }, [isAdmin, activeView]);
 
   const applyFilters = async () => {
     try {
@@ -89,7 +97,7 @@ function AppContent() {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="w-10 h-10 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-slate-600 font-medium">Loading...</p>
         </div>
       </div>
@@ -100,87 +108,95 @@ function AppContent() {
     return <AuthPage />;
   }
 
-  const totalSpent = expenses.reduce((total, expense) => total + expense.amount, 0);
-
-  return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
-        {/* Header */}
-        <Header
-          showAdminPanel={showAdminPanel}
-          onToggleAdminPanel={() => setShowAdminPanel(!showAdminPanel)}
-        />
-
-        {/* Error Alert */}
-        {error && (
-          <div className="mb-6 sm:mb-8 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start sm:items-center gap-3 text-red-700 shadow-sm">
-            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 sm:mt-0" />
-            <span className="font-medium flex-1">{error}</span>
-            <button
-              onClick={() => setError(null)}
-              className="text-red-600 hover:text-red-800 font-semibold text-lg leading-none ml-2"
-            >
-              ×
-            </button>
-          </div>
-        )}
-
-        {/* Admin Panel */}
-        {showAdminPanel && (
-          <div className="mb-6 sm:mb-8">
-            <AdminPanel />
-          </div>
-        )}
-
-        {/* Budget Tracker */}
-        <div className="mb-6 sm:mb-8">
-          <BudgetTracker
+  const renderView = () => {
+    switch (activeView) {
+      case 'overview':
+        return (
+          <Overview
+            expenses={expenses}
             budget={budget}
-            totalSpent={totalSpent}
-            onBudgetUpdate={handleBudgetUpdate}
+            loading={loading}
+            onDeleteExpense={handleDeleteExpense}
+            onManageBudget={() => setActiveView('budget')}
+            onViewAllExpenses={() => setActiveView('expenses')}
           />
-        </div>
-
-        {/* Main Content Grid - Responsive Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 mb-6 sm:mb-8">
-          {/* Expense Form */}
-          <div className="lg:col-span-1 order-2 lg:order-1">
+        );
+      case 'add-expense':
+        return (
+          <div className="max-w-3xl">
             <ExpenseForm
               onAddExpense={handleAddExpense}
               loading={loading}
               budget={budget}
-              totalSpent={totalSpent}
+              totalSpent={expenses.reduce((sum, e) => sum + e.amount, 0)}
             />
           </div>
-
-          {/* Expense List */}
-          <div className="lg:col-span-2 order-1 lg:order-2">
+        );
+      case 'expenses':
+        return (
+          <div className="space-y-6">
+            <ExpenseFilters filters={filters} onFiltersChange={setFilters} />
             <ExpenseList
-              expenses={filteredExpenses.slice(0, 10)}
+              expenses={filteredExpenses}
               onDeleteExpense={handleDeleteExpense}
               loading={loading}
             />
           </div>
-        </div>
-
-        {/* Filters */}
-        {expenses.length > 0 && (
-          <div className="mb-6 sm:mb-8">
-            <ExpenseFilters filters={filters} onFiltersChange={setFilters} />
+        );
+      case 'analytics':
+        return <ExpenseCharts expenses={filteredExpenses} />;
+      case 'budget':
+        return (
+          <div className="max-w-4xl">
+            <BudgetTracker
+              budget={budget}
+              totalSpent={expenses.reduce((sum, e) => sum + e.amount, 0)}
+              onBudgetUpdate={handleBudgetUpdate}
+            />
           </div>
-        )}
+        );
+      case 'admin':
+        return isAdmin ? <AdminPanel /> : null;
+      case 'profile':
+        return <ProfileView />;
+      default:
+        return null;
+    }
+  };
 
-        {/* Charts */}
-        {expenses.length > 0 && (
-          <div className="mb-6 sm:mb-8">
-            <ExpenseCharts expenses={filteredExpenses} />
-          </div>
-        )}
+  return (
+    <div className="min-h-screen bg-slate-100 flex">
+      <Sidebar
+        activeView={activeView}
+        onNavigate={setActiveView}
+        mobileOpen={mobileNavOpen}
+        onCloseMobile={() => setMobileNavOpen(false)}
+      />
 
-        {/* Footer */}
-        <footer className="text-center text-slate-500 text-sm border-t border-slate-200 pt-6 sm:pt-8">
-          <p>© 2025 Expense Tracker • Built with React & TypeScript</p>
-        </footer>
+      {/* Main content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <TopBar
+          activeView={activeView}
+          onOpenMobile={() => setMobileNavOpen(true)}
+          onOpenProfile={() => setActiveView('profile')}
+        />
+
+        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+          {error && (
+            <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-700 shadow-sm">
+              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              <span className="font-medium flex-1">{error}</span>
+              <button
+                onClick={() => setError(null)}
+                className="text-rose-600 hover:text-rose-800 font-semibold text-lg leading-none ml-2"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          {renderView()}
+        </main>
       </div>
     </div>
   );

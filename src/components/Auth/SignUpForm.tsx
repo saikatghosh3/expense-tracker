@@ -43,8 +43,8 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm }) => {
       await signUp(formData.email, formData.password, formData.fullName);
       setSuccess('Account created successfully! You are now signed in.');
       setFormData({ fullName: '', email: '', password: '', confirmPassword: '' });
-    } catch (err: any) {
-      setError(err.message || 'Failed to create account');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create account');
     } finally {
       setLoading(false);
     }
@@ -59,7 +59,7 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm }) => {
 
   return (
     <div className="w-full max-w-md mx-auto">
-      <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8">
+      <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
         <div className="text-center mb-6 sm:mb-8">
           <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-emerald-600 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
             <UserPlus className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
@@ -170,7 +170,7 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm }) => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-gradient-to-r from-emerald-600 to-green-600 text-white py-3.5 px-4 rounded-xl font-semibold hover:from-emerald-700 hover:to-green-700 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25"
+            className="w-full btn-shine bg-gradient-to-r from-emerald-600 to-green-600 text-white py-3.5 px-4 rounded-xl font-semibold hover:from-emerald-700 hover:to-green-700 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-emerald-600/30"
           >
             {loading ? (
               <>

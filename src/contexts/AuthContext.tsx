@@ -8,6 +8,12 @@ interface AuthContextType {
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  updateProfile: (updates: {
+    fullName?: string;
+    email?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -70,6 +76,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     storage.setCurrentUser(null);
   };
 
+  const updateProfile = async (updates: {
+    fullName?: string;
+    email?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  }) => {
+    if (!user) throw new Error('Not authenticated');
+
+    if (updates.email && updates.email !== user.email) {
+      const existing = storage.getUserByEmail(updates.email);
+      if (existing && existing.id !== user.id) {
+        throw new Error('Email is already in use');
+      }
+    }
+
+    if (updates.newPassword) {
+      if (!updates.currentPassword || updates.currentPassword !== user.password) {
+        throw new Error('Current password is incorrect');
+      }
+      if (updates.newPassword.length < 6) {
+        throw new Error('New password must be at least 6 characters');
+      }
+    }
+
+    const updatedUser = storage.updateUser(user.id, {
+      fullName: updates.fullName ?? user.fullName,
+      email: updates.email ?? user.email,
+      password: updates.newPassword ?? user.password,
+    });
+
+    if (updatedUser) {
+      setUser(updatedUser);
+      storage.setCurrentUser(updatedUser);
+    }
+  };
+
   const value = {
     user,
     loading,
@@ -77,6 +119,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signUp,
     signIn,
     signOut,
+    updateProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

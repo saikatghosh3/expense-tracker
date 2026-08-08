@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { storage, Expense, Budget } from '../data/storage';
+import { storage, Expense } from '../data/storage';
 import { useAuth } from '../contexts/AuthContext';
 
 export const useExpenses = () => {
