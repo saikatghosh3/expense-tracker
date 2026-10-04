@@ -1,10 +1,16 @@
 import React, { useState } from 'react';
-import { UserPlus, Eye, EyeOff, User, Mail, Lock } from 'lucide-react';
+import { UserPlus, User, Mail, Lock, Check } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { Button } from '../ui/Primitives';
+import { Field, Input } from '../ui/Field';
+import AuthCard from '../ui/AuthCard';
+import PasswordField, { MatchIndicator } from '../ui/PasswordField';
 
 interface SignUpFormProps {
   onToggleForm: () => void;
 }
+
+const MIN_PASSWORD_LENGTH = 6;
 
 const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm }) => {
   const [formData, setFormData] = useState({
@@ -17,188 +23,129 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm }) => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   const { signUp } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((current) => ({ ...current, [event.target.name]: event.target.value }));
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError('');
-    setSuccess('');
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      setLoading(false);
+      setError('Passwords do not match.');
+      return;
+    }
+    if (formData.password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
       return;
     }
 
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters long');
-      setLoading(false);
-      return;
-    }
-
+    setLoading(true);
     try {
-      await signUp(formData.email, formData.password, formData.fullName);
-      setSuccess('Account created successfully! You are now signed in.');
-      setFormData({ fullName: '', email: '', password: '', confirmPassword: '' });
+      await signUp(formData.email.trim(), formData.password, formData.fullName.trim());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create account');
+      setError(err instanceof Error ? err.message : 'Could not create the account.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
+  const mismatch = formData.confirmPassword.length > 0 && formData.password !== formData.confirmPassword;
 
   return (
-    <div className="w-full max-w-md mx-auto">
-      <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
-        <div className="text-center mb-6 sm:mb-8">
-          <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-emerald-600 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <UserPlus className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
-          </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-slate-900">Create Account</h2>
-          <p className="text-slate-600 mt-2 text-sm sm:text-base">Join us to start tracking your expenses</p>
-        </div>
+    <AuthCard
+      icon={UserPlus}
+      gradient="from-emerald-600 to-green-600"
+      shadowClass="shadow-lg shadow-emerald-600/20"
+      title="Create Account"
+      subtitle="Start tracking your expenses"
+      error={error}
+      footerPrompt={<>Already have an account?</>}
+      footerActionLabel="Sign in"
+      onFooterAction={onToggleForm}
+      footerActionClassName="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300"
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <Field label="Full name" htmlFor="signup-name" icon={User}>
+          <Input
+            id="signup-name"
+            type="text"
+            name="fullName"
+            value={formData.fullName}
+            onChange={handleChange}
+            placeholder="Enter your full name"
+            autoComplete="name"
+            minLength={2}
+            maxLength={60}
+            required
+          />
+        </Field>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium">
-            {error}
-          </div>
-        )}
+        <Field label="Email address" htmlFor="signup-email" icon={Mail}>
+          <Input
+            id="signup-email"
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            placeholder="you@example.com"
+            autoComplete="email"
+            required
+          />
+        </Field>
 
-        {success && (
-          <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-sm font-medium">
-            {success}
-          </div>
-        )}
+        <PasswordField
+          label="Password"
+          id="signup-password"
+          name="password"
+          icon={Lock}
+          value={formData.password}
+          onChange={(value) => setFormData((current) => ({ ...current, password: value }))}
+          shown={showPassword}
+          onToggleShown={() => setShowPassword((current) => !current)}
+          placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+          autoComplete="new-password"
+          minLength={MIN_PASSWORD_LENGTH}
+          required
+        />
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Full Name
-            </label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="text"
-                name="fullName"
-                value={formData.fullName}
-                onChange={handleChange}
-                className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 text-sm sm:text-base"
-                placeholder="Enter your full name"
-                required
-              />
-            </div>
-          </div>
+        <PasswordField
+          label="Confirm password"
+          id="signup-confirm"
+          name="confirmPassword"
+          icon={Lock}
+          value={formData.confirmPassword}
+          onChange={(value) => setFormData((current) => ({ ...current, confirmPassword: value }))}
+          shown={showConfirmPassword}
+          onToggleShown={() => setShowConfirmPassword((current) => !current)}
+          revealWord="confirmation"
+          placeholder="Repeat your password"
+          autoComplete="new-password"
+          error={mismatch ? 'Passwords do not match' : undefined}
+          trailing={
+            mismatch ? (
+              <MatchIndicator />
+            ) : formData.confirmPassword ? (
+              <Check className="w-4 h-4 text-emerald-500" aria-hidden="true" />
+            ) : undefined
+          }
+          required
+        />
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Email Address
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 text-sm sm:text-base"
-                placeholder="Enter your email"
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Password
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                className="w-full pl-10 pr-12 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 text-sm sm:text-base"
-                placeholder="Create a password"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Confirm Password
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type={showConfirmPassword ? 'text' : 'password'}
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                className="w-full pl-10 pr-12 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 text-sm sm:text-base"
-                placeholder="Confirm your password"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full btn-shine bg-gradient-to-r from-emerald-600 to-green-600 text-white py-3.5 px-4 rounded-xl font-semibold hover:from-emerald-700 hover:to-green-700 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-emerald-600/30"
-          >
-            {loading ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Creating account...
-              </>
-            ) : (
-              <>
-                <UserPlus className="w-5 h-5" />
-                Create Account
-              </>
-            )}
-          </button>
-        </form>
-
-        <div className="mt-6 sm:mt-8 pt-6 border-t border-slate-200">
-          <p className="text-center text-sm text-slate-600">
-            Already have an account?{' '}
-            <button
-              onClick={onToggleForm}
-              className="text-emerald-600 hover:text-emerald-700 font-semibold transition-colors"
-            >
-              Sign in
-            </button>
-          </p>
-        </div>
-      </div>
-    </div>
+        <Button
+          type="submit"
+          loading={loading}
+          variant="success"
+          className="w-full"
+        >
+          {!loading && <UserPlus className="w-4 h-4" />}
+          {loading ? 'Creating account...' : 'Create Account'}
+        </Button>
+      </form>
+    </AuthCard>
   );
 };
 

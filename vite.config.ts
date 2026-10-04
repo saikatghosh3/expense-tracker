@@ -12,4 +12,16 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Charting and icon libraries dwarf the app code; splitting them keeps
+        // the initial bundle small and lets the browser cache them separately.
+        manualChunks: {
+          charts: ['recharts'],
+          icons: ['lucide-react'],
+        },
+      },
+    },
+  },
 });

@@ -1,24 +1,38 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   User,
   Mail,
   Lock,
-  Eye,
-  EyeOff,
-  Save,
   CheckCircle2,
-  AlertCircle,
   ShieldCheck,
   Calendar,
   KeyRound,
+  Receipt,
+  Wallet,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useExpenses } from '../../hooks/useExpenses';
+import { useSettings } from '../../contexts/SettingsContext';
+import { Button } from '../ui/Primitives';
+import { Field, Input } from '../ui/Field';
+import { SectionCard } from '../ui/Card';
+import PageHeader from '../ui/PageHeader';
+import Alert from '../ui/Alert';
+import MetricCard from '../ui/MetricCard';
+import PasswordField from '../ui/PasswordField';
+import Badge from '../ui/Badge';
+import { useToast } from '../ui/Toast';
+
+const MIN_PASSWORD_LENGTH = 6;
 
 const ProfileView: React.FC = () => {
   const { user, updateProfile } = useAuth();
+  const { expenses, budget } = useExpenses();
+  const { formatMoneyWhole } = useSettings();
+  const toast = useToast();
 
-  const [fullName, setFullName] = useState(user?.fullName || '');
-  const [email, setEmail] = useState(user?.email || '');
+  const [fullName, setFullName] = useState(user?.fullName ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -27,262 +41,317 @@ const ProfileView: React.FC = () => {
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    if (!user) return;
+    setFullName(user.fullName);
+    setEmail(user.email);
+  }, [user]);
 
   if (!user) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const mismatch =
+    confirmPassword.length > 0 && newPassword !== confirmPassword;
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError('');
-    setSuccess('');
 
     if (newPassword && newPassword !== confirmPassword) {
-      setError('New passwords do not match');
+      setError('New passwords do not match.');
       return;
     }
 
-    setLoading(true);
+    if (newPassword && newPassword.length < MIN_PASSWORD_LENGTH) {
+      setError(
+        `New password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
+      );
+      return;
+    }
+
+    if (newPassword && !currentPassword) {
+      setError('Enter your current password to set a new one.');
+      return;
+    }
+
+    setSaving(true);
+
     try {
       await updateProfile({
-        fullName,
-        email,
+        fullName: fullName.trim(),
+        email: email.trim(),
         currentPassword: currentPassword || undefined,
         newPassword: newPassword || undefined,
       });
-      setSuccess('Profile updated successfully!');
+
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+
+      toast.success(
+        'Profile updated',
+        'Your details have been saved.',
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update profile');
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Failed to update profile';
+
+      setError(message);
+      toast.error('Could not update profile', message);
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const inputClass = (hasError?: boolean) =>
-    `w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 text-sm ${
-      hasError ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
-    }`;
+  const memberSince = new Date(user.createdAt).toLocaleDateString(
+    undefined,
+    {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    },
+  );
 
-  const passwordClass = (hasError?: boolean) =>
-    `w-full pl-10 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 text-sm ${
-      hasError ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
-    }`;
-
-  const Field = ({
-    label,
-    icon: Icon,
-    children,
-  }: {
-    label: string;
-    icon: React.ElementType;
-    children: React.ReactNode;
-  }) => (
-    <div>
-      <label className="block text-sm font-semibold text-slate-700 mb-2">{label}</label>
-      <div className="relative">
-        <Icon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-        {children}
-      </div>
-    </div>
+  const lifetimeTotal = expenses.reduce(
+    (total, expense) => total + expense.amount,
+    0,
   );
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Profile form */}
-      <div className="lg:col-span-2">
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm">
-          <div className="p-6 sm:p-8">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-11 h-11 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-xl flex items-center justify-center">
-                <User className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">Personal Information</h2>
-                <p className="text-xs text-slate-500">Update your account details below</p>
-              </div>
-            </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Profile"
+        subtitle="Manage your account details and password."
+      />
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-6 items-start">
+        {/* Main profile form */}
+        <div className="lg:col-span-2 min-w-0">
+          <SectionCard
+            as="form"
+            onSubmit={handleSubmit}
+            noValidate
+            icon={User}
+            gradient="from-indigo-600 to-violet-600"
+            title="Personal Information"
+            subtitle="Update the details stored for your account"
+          >
             {error && (
-              <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-700">
-                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                <p className="text-sm font-medium">{error}</p>
-              </div>
-            )}
-            {success && (
-              <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-3 text-emerald-700">
-                <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                <p className="text-sm font-medium">{success}</p>
-              </div>
+              <Alert tone="danger" iconSize="lg" role="alert">
+                {error}
+              </Alert>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <Field label="Full Name" icon={User}>
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className={inputClass()}
-                    placeholder="Enter your full name"
-                    required
-                  />
-                </Field>
-                <Field label="Email Address" icon={Mail}>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className={inputClass()}
-                    placeholder="Enter your email"
-                    required
-                  />
-                </Field>
-              </div>
-
-              <div className="pt-6 border-t border-slate-200">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-11 h-11 bg-gradient-to-br from-slate-700 to-slate-900 rounded-xl flex items-center justify-center">
-                    <Lock className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900">Change Password</h3>
-                    <p className="text-xs text-slate-500">Leave blank to keep your current password</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                  <Field label="Current Password" icon={KeyRound}>
-                    <input
-                      type={showCurrent ? 'text' : 'password'}
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      className={passwordClass()}
-                      placeholder="••••••••"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowCurrent(!showCurrent)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                    >
-                      {showCurrent ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </Field>
-                  <Field label="New Password" icon={Lock}>
-                    <input
-                      type={showNew ? 'text' : 'password'}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className={passwordClass()}
-                      placeholder="Min. 6 characters"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNew(!showNew)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                    >
-                      {showNew ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </Field>
-                  <Field label="Confirm Password" icon={Lock}>
-                    <input
-                      type={showConfirm ? 'text' : 'password'}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className={passwordClass()}
-                      placeholder="Repeat new password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirm(!showConfirm)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                    >
-                      {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </Field>
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-slate-200 flex justify-end">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl font-semibold hover:from-indigo-700 hover:to-violet-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-600/25"
-                >
-                  {loading ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      Save Changes
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-
-      {/* Account info */}
-      <div className="space-y-6">
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-          <div className="flex flex-col items-center text-center mb-6">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-600/30 mb-4">
-              <User className="w-9 h-9 text-white" />
-            </div>
-            <h3 className="text-lg font-bold text-slate-900">{user.fullName || 'User'}</h3>
-            <p className="text-sm text-slate-500">{user.email}</p>
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
-              <div className="flex items-center gap-2 text-sm text-slate-600">
-                <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                <span className="font-medium">Role</span>
-              </div>
-              <span
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                  user.isAdmin
-                    ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                    : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                }`}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <Field
+                label="Full name"
+                htmlFor="profile-name"
+                icon={User}
               >
-                {user.isAdmin ? 'Administrator' : 'Member'}
-              </span>
+                <Input
+                  id="profile-name"
+                  type="text"
+                  value={fullName}
+                  onChange={(event) =>
+                    setFullName(event.target.value)
+                  }
+                  required
+                  minLength={2}
+                  maxLength={60}
+                  autoComplete="name"
+                />
+              </Field>
+
+              <Field
+                label="Email address"
+                htmlFor="profile-email"
+                icon={Mail}
+              >
+                <Input
+                  id="profile-email"
+                  type="email"
+                  value={email}
+                  onChange={(event) =>
+                    setEmail(event.target.value)
+                  }
+                  required
+                  autoComplete="email"
+                />
+              </Field>
             </div>
-            <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
-              <div className="flex items-center gap-2 text-sm text-slate-600">
-                <Calendar className="w-4 h-4 text-indigo-600" />
-                <span className="font-medium">Member Since</span>
+
+            <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
+              <div className="mb-5">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-slate-400" />
+
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                    Change password
+                  </h3>
+                </div>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Leave these blank to keep your current password.
+                </p>
               </div>
-              <span className="text-sm font-semibold text-slate-900">
-                {new Date(user.createdAt).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
-              </span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
-              <div className="flex items-center gap-2 text-sm text-slate-600">
-                <KeyRound className="w-4 h-4 text-indigo-600" />
-                <span className="font-medium">User ID</span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <PasswordField
+                  label="Current password"
+                  id="current-password"
+                  icon={Lock}
+                  revealWord="current password"
+                  value={currentPassword}
+                  onChange={setCurrentPassword}
+                  shown={showCurrent}
+                  onToggleShown={() => setShowCurrent((current) => !current)}
+                  autoComplete="current-password"
+                />
+
+                <PasswordField
+                  label="New password"
+                  id="new-password"
+                  icon={Lock}
+                  revealWord="new password"
+                  value={newPassword}
+                  onChange={setNewPassword}
+                  shown={showNew}
+                  onToggleShown={() => setShowNew((current) => !current)}
+                  autoComplete="new-password"
+                  minLength={MIN_PASSWORD_LENGTH}
+                />
+
+                <PasswordField
+                  label="Confirm new password"
+                  id="confirm-password"
+                  icon={Lock}
+                  className="sm:max-w-[calc(50%-0.625rem)]"
+                  revealWord="confirmation"
+                  value={confirmPassword}
+                  onChange={setConfirmPassword}
+                  shown={showConfirm}
+                  onToggleShown={() => setShowConfirm((current) => !current)}
+                  error={mismatch ? 'Passwords do not match' : undefined}
+                  trailing={
+                    confirmPassword.length > 0 && !mismatch ? (
+                      <CheckCircle2
+                        className="w-4 h-4 text-emerald-500"
+                        aria-hidden="true"
+                      />
+                    ) : undefined
+                  }
+                  autoComplete="new-password"
+                />
               </div>
-              <span className="text-xs font-semibold text-slate-500 truncate max-w-28">{user.id}</span>
             </div>
-          </div>
+
+            <div className="pt-1 flex justify-end">
+              <Button
+                type="submit"
+                loading={saving}
+                className="w-full sm:w-auto"
+              >
+                Save Changes
+              </Button>
+            </div>
+          </SectionCard>
         </div>
 
-        <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl p-6 text-white shadow-lg shadow-indigo-600/25">
-          <p className="text-sm font-semibold mb-2">Security Tip</p>
-          <p className="text-xs text-indigo-100 leading-relaxed">
-            Use a strong, unique password for your account and update it regularly to keep your financial data safe.
+        {/* Sidebar */}
+        <div className="space-y-5 lg:space-y-6 min-w-0">
+          <SectionCard
+            as="div"
+            size="sidebar"
+            titleAs="h3"
+            icon={ShieldCheck}
+            gradient="from-emerald-600 to-teal-600"
+            title="Your Account"
+            subtitle="Stored in this browser"
+            spacing="space-y-0"
+          >
+            <dl className="space-y-4 text-sm">
+              <div className="flex items-start justify-between gap-4">
+                <dt className="text-slate-500 dark:text-slate-400 flex items-center gap-2 flex-shrink-0">
+                  <User className="w-4 h-4 text-slate-400" />
+                  Name
+                </dt>
+
+                <dd className="font-semibold text-slate-900 dark:text-slate-100 text-right break-words min-w-0">
+                  {user.fullName}
+                </dd>
+              </div>
+
+              <div className="flex items-start justify-between gap-4">
+                <dt className="text-slate-500 dark:text-slate-400 flex items-center gap-2 flex-shrink-0">
+                  <Mail className="w-4 h-4 text-slate-400" />
+                  Email
+                </dt>
+
+                <dd className="font-semibold text-slate-900 dark:text-slate-100 text-right break-all min-w-0">
+                  {user.email}
+                </dd>
+              </div>
+
+              <div className="flex items-start justify-between gap-4">
+                <dt className="text-slate-500 dark:text-slate-400 flex items-center gap-2 flex-shrink-0">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  Member since
+                </dt>
+
+                <dd className="font-semibold text-slate-900 dark:text-slate-100 text-right break-words min-w-0">
+                  {memberSince}
+                </dd>
+              </div>
+
+              {user.isAdmin && (
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-slate-400" />
+                    Role
+                  </dt>
+
+                  <dd>
+                    <Badge>ADMIN</Badge>
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </SectionCard>
+
+          <SectionCard as="div" spacing="space-y-4">
+            <MetricCard
+              variant="row"
+              label="Expenses tracked"
+              value={expenses.length}
+              icon={Receipt}
+              gradient="from-indigo-500 to-violet-600"
+            />
+
+            <MetricCard
+              variant="row"
+              label="Total spent all time"
+              value={formatMoneyWhole(lifetimeTotal)}
+              icon={Wallet}
+              gradient="from-emerald-500 to-teal-600"
+            />
+
+            <MetricCard
+              variant="row"
+              label="Budget this month"
+              value={budget > 0 ? formatMoneyWhole(budget) : 'Not set'}
+              icon={Wallet}
+              gradient="from-amber-500 to-orange-600"
+            />
+          </SectionCard>
+
+          <p className="px-1 text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
+            Your password is hashed before it is stored, but this app
+            has no server. Anyone with access to this browser profile
+            could read the underlying data.
           </p>
         </div>
       </div>

@@ -1,272 +1,245 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Trash2, Shield, Search, AlertTriangle } from 'lucide-react';
-import { storage, User } from '../../data/storage';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Users, Trash2, Shield, Search, UserCog, Database } from 'lucide-react';
+import { storage } from '../../data/storage';
+import type { User } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
+import { useSettings } from '../../contexts/SettingsContext';
+import { Button, Skeleton } from '../ui/Primitives';
+import { Field, Input } from '../ui/Field';
+import { EmptyState, SectionCard } from '../ui/Card';
+import PageHeader from '../ui/PageHeader';
+import Alert from '../ui/Alert';
+import MetricCard from '../ui/MetricCard';
+import Badge from '../ui/Badge';
+import ConfirmDialog from '../ui/ConfirmDialog';
+import { useToast } from '../ui/Toast';
+import { useConfirm } from '../../hooks/useConfirm';
 
-interface UserWithStats extends User {
-  expense_count: number;
-  total_expenses: number;
+interface UserRow {
+  user: User;
+  expenseCount: number;
+  totalExpenses: number;
+  budgetCount: number;
 }
 
+const STAT_GRADIENT = 'from-indigo-600 to-violet-600';
+
 const AdminPanel: React.FC = () => {
-  const [users, setUsers] = useState<UserWithStats[]>([]);
+  const { user: currentUser } = useAuth();
+  const { formatMoneyWhole } = useSettings();
+  const toast = useToast();
+
+  const [rows, setRows] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const pendingDelete = useConfirm<UserRow>();
+
+  const loadUsers = useCallback(() => {
+    try {
+      setLoading(true);
+      const next = storage.getAllUsers().map((user) => {
+        const stats = storage.getUserStats(user.id);
+        return {
+          user,
+          expenseCount: stats.expenseCount,
+          totalExpenses: stats.totalExpenses,
+          budgetCount: stats.budgetCount,
+        };
+      });
+      // Newest first so recently created accounts are easy to find.
+      setRows(next.sort((a, b) => a.user.createdAt.localeCompare(b.user.createdAt)));
+    } catch (error) {
+      toast.error('Could not load users', error instanceof Error ? error.message : undefined);
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
 
   useEffect(() => {
     loadUsers();
-  }, []);
+  }, [loadUsers]);
 
-  const loadUsers = async () => {
-    try {
-      setLoading(true);
-      
-      const allUsers = storage.getAllUsers();
-      const usersWithStats = allUsers.map(user => {
-        const stats = storage.getUserStats(user.id);
-        return {
-          ...user,
-          expense_count: stats.expenseCount,
-          total_expenses: stats.totalExpenses,
-        };
-      });
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return rows;
+    return rows.filter(
+      (row) =>
+        row.user.email.toLowerCase().includes(term) ||
+        row.user.fullName.toLowerCase().includes(term),
+    );
+  }, [rows, search]);
 
-      setUsers(usersWithStats);
-    } catch (error) {
-      console.error('Error loading users:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deleteUser = async (userId: string) => {
-    try {
-      setLoading(true);
-      storage.deleteUser(userId);
-      await loadUsers();
-      setDeleteConfirm(null);
-    } catch (error) {
-      console.error('Error deleting user:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filteredUsers = users.filter(user =>
-    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (user.fullName && user.fullName.toLowerCase().includes(searchTerm.toLowerCase()))
+  const totals = useMemo(
+    () => ({
+      users: rows.length,
+      admins: rows.filter((row) => row.user.isAdmin).length,
+      expenses: rows.reduce((sum, row) => sum + row.expenseCount, 0),
+    }),
+    [rows],
   );
 
-  if (loading && users.length === 0) {
-    return (
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-600 font-medium">Loading users...</p>
-        </div>
-      </div>
-    );
-  }
+  const handleDelete = useCallback(() => {
+    const target = pendingDelete.target;
+    if (!target) return;
+    try {
+      storage.deleteUser(target.user.id);
+      toast.success('User removed', `${target.user.email} was deleted.`);
+      pendingDelete.close();
+      loadUsers();
+    } catch (error) {
+      toast.error('Could not delete user', error instanceof Error ? error.message : undefined);
+    }
+  }, [pendingDelete, loadUsers, toast]);
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-red-600 to-rose-600 rounded-xl flex items-center justify-center">
-            <Shield className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h2 className="text-lg sm:text-xl font-bold text-slate-900">Admin Panel</h2>
-            <p className="text-sm text-slate-600">{users.length} total users</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 px-3 py-2 rounded-lg">
-          <Users className="w-4 h-4" />
-          {users.length} users
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Admin"
+        subtitle="Accounts stored in this browser. Deleting a user removes all of their expenses and budgets."
+      />
 
-      {/* Search */}
-      <div className="mb-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 text-sm sm:text-base"
-            placeholder="Search users by email or name..."
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[
+          { label: 'Total Users', value: String(totals.users), icon: Users },
+          { label: 'Administrators', value: String(totals.admins), icon: Shield },
+          { label: 'Expenses Tracked', value: String(totals.expenses), icon: Database },
+        ].map((stat) => (
+          <MetricCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            icon={stat.icon}
+            gradient={STAT_GRADIENT}
+            valueSize="xl"
           />
-        </div>
+        ))}
       </div>
 
-      {/* Users Table - Responsive */}
-      <div className="overflow-x-auto">
-        <div className="hidden sm:block">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-200">
-                <th className="text-left py-4 px-4 font-semibold text-slate-700">User</th>
-                <th className="text-left py-4 px-4 font-semibold text-slate-700">Role</th>
-                <th className="text-left py-4 px-4 font-semibold text-slate-700">Expenses</th>
-                <th className="text-left py-4 px-4 font-semibold text-slate-700">Total Spent</th>
-                <th className="text-left py-4 px-4 font-semibold text-slate-700">Joined</th>
-                <th className="text-left py-4 px-4 font-semibold text-slate-700">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map((user) => (
-                <tr key={user.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                  <td className="py-4 px-4">
-                    <div>
-                      <div className="font-semibold text-slate-900">
-                        {user.fullName || 'No name'}
-                      </div>
-                      <div className="text-sm text-slate-500">{user.email}</div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-4">
-                    <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
-                      user.isAdmin 
-                        ? 'bg-red-100 text-red-700 border border-red-200' 
-                        : 'bg-blue-100 text-blue-700 border border-blue-200'
-                    }`}>
-                      {user.isAdmin ? 'Admin' : 'User'}
-                    </span>
-                  </td>
-                  <td className="py-4 px-4 text-slate-900 font-medium">
-                    {user.expense_count || 0}
-                  </td>
-                  <td className="py-4 px-4 text-slate-900 font-medium">
-                    ${(user.total_expenses || 0).toLocaleString()}
-                  </td>
-                  <td className="py-4 px-4 text-slate-500 text-sm">
-                    {new Date(user.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="py-4 px-4">
-                    {!user.isAdmin && (
-                      <>
-                        {deleteConfirm === user.id ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => deleteUser(user.id)}
-                              disabled={loading}
-                              className="px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 disabled:opacity-50 font-medium"
-                            >
-                              Confirm
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirm(null)}
-                              className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs rounded-lg hover:bg-slate-300 font-medium"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setDeleteConfirm(user.id)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Delete user"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <SectionCard
+        as="div"
+        padding=""
+        spacing="space-y-5"
+        icon={Users}
+        gradient={STAT_GRADIENT}
+        title="Users"
+        subtitle={`${filtered.length} of ${rows.length} shown`}
+      >
+
+        <div className="max-w-sm">
+          <Field label="Search by name or email" htmlFor="admin-search" icon={Search}>
+            <Input
+              id="admin-search"
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search users..."
+            />
+          </Field>
         </div>
 
-        {/* Mobile Cards */}
-        <div className="sm:hidden space-y-4">
-          {filteredUsers.map((user) => (
-            <div key={user.id} className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-slate-900 truncate">
-                    {user.fullName || 'No name'}
-                  </h3>
-                  <p className="text-sm text-slate-500 truncate">{user.email}</p>
-                </div>
-                <span className={`px-2 py-1 rounded-lg text-xs font-semibold ml-2 ${
-                  user.isAdmin 
-                    ? 'bg-red-100 text-red-700 border border-red-200' 
-                    : 'bg-blue-100 text-blue-700 border border-blue-200'
-                }`}>
-                  {user.isAdmin ? 'Admin' : 'User'}
-                </span>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4 mb-3 text-sm">
-                <div>
-                  <span className="text-slate-600">Expenses:</span>
-                  <span className="font-medium text-slate-900 ml-1">{user.expense_count || 0}</span>
-                </div>
-                <div>
-                  <span className="text-slate-600">Total:</span>
-                  <span className="font-medium text-slate-900 ml-1">${(user.total_expenses || 0).toLocaleString()}</span>
-                </div>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500">
-                  Joined {new Date(user.createdAt).toLocaleDateString()}
-                </span>
-                {!user.isAdmin && (
-                  <>
-                    {deleteConfirm === user.id ? (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => deleteUser(user.id)}
-                          disabled={loading}
-                          className="px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 disabled:opacity-50 font-medium"
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirm(null)}
-                          className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs rounded-lg hover:bg-slate-300 font-medium"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setDeleteConfirm(user.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Delete user"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {filteredUsers.length === 0 && (
-        <div className="text-center py-12">
-          <Users className="w-16 h-16 mx-auto mb-4 text-slate-400" />
-          <h3 className="text-lg font-semibold text-slate-900 mb-2">No users found</h3>
-          <p className="text-slate-600">Try adjusting your search criteria</p>
-        </div>
-      )}
-
-      {/* Warning */}
-      <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
-          <div className="text-sm text-amber-800 min-w-0 flex-1">
-            <p className="font-semibold mb-1">Admin Panel Warning</p>
-            <p>Deleting a user will permanently remove all their data including expenses and budgets. This action cannot be undone.</p>
+        {loading && rows.length === 0 ? (
+          <div className="space-y-3">
+            {[0, 1, 2].map((index) => (
+              <Skeleton key={index} className="h-16 w-full rounded-xl" />
+            ))}
           </div>
-        </div>
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={search ? Search : Users}
+            title={search ? 'No matching users' : 'No users yet'}
+            message={
+              search ? 'Try a different name or email address.' : 'Accounts created in this browser will appear here.'
+            }
+            actionTo={search ? undefined : '/auth'}
+            actionLabel={search ? undefined : 'Create an account'}
+          />
+        ) : (
+          <div className="space-y-3">
+            {filtered.map(({ user, expenseCount, totalExpenses, budgetCount }) => {
+              const isSelf = user.id === currentUser?.id;
+              return (
+                <div
+                  key={user.id}
+                  className="flex flex-wrap items-center gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center flex-shrink-0">
+                    <UserCog className="w-5 h-5 text-white" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+                        {user.fullName}
+                      </p>
+                      {user.isAdmin && <Badge>ADMIN</Badge>}
+                      {isSelf && <Badge tone="slate">YOU</Badge>}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                      Joined {new Date(user.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-5 text-right">
+                    <div>
+                      <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                        {formatMoneyWhole(totalExpenses)}
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {expenseCount} {expenseCount === 1 ? 'expense' : 'expenses'}
+                      </p>
+                    </div>
+                    <div className="hidden sm:block">
+                      <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{budgetCount}</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {budgetCount === 1 ? 'budget' : 'budgets'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => pendingDelete.ask({ user, expenseCount, totalExpenses, budgetCount })}
+                    disabled={isSelf}
+                    title={isSelf ? 'You cannot delete your own account' : 'Delete user'}
+                    aria-label={`Delete ${user.fullName}`}
+                    className="p-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SectionCard>
+
+      <Alert tone="warning">
+        This admin panel manages local browser data only. Anyone with access to
+        this browser can see the same users.
+      </Alert>
+
+      <ConfirmDialog
+        isOpen={pendingDelete.isOpen}
+        title="Delete this user?"
+        message={
+          pendingDelete.target
+            ? `${pendingDelete.target.user.email} will be removed along with ${pendingDelete.target.expenseCount} ${
+                pendingDelete.target.expenseCount === 1 ? 'expense' : 'expenses'
+              } and ${pendingDelete.target.budgetCount} ${
+                pendingDelete.target.budgetCount === 1 ? 'budget' : 'budgets'
+              }. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete User"
+        destructive
+        onConfirm={handleDelete}
+        onCancel={pendingDelete.close}
+      />
+
+      <div className="flex justify-end">
+        <Button variant="secondary" onClick={loadUsers}>
+          Refresh
+        </Button>
       </div>
     </div>
   );

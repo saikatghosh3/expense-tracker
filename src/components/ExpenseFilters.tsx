@@ -1,137 +1,329 @@
 import React from 'react';
-import { Filter, Calendar, Tag, X } from 'lucide-react';
-import { CATEGORIES } from '../types';
+import {
+  Filter,
+  Tag,
+  X,
+  Search,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+} from 'lucide-react';
+import {
+  CATEGORIES,
+  type ExpenseFilters as ExpenseFilterState,
+  type SortKey,
+} from '../types';
+import {
+  DATE_RANGE_PRESETS,
+  type DateRangePreset,
+  formatDisplayDate,
+} from '../utils/date';
+import { countActiveFilters } from '../utils/expenses';
+import { useSettings } from '../contexts/SettingsContext';
+import { Field, FieldGroup, FieldSet, Input, Select } from './ui/Field';
+import { SectionCard } from './ui/Card';
+import Alert from './ui/Alert';
 
 interface ExpenseFiltersProps {
-  filters: {
-    category: string;
-    startDate: string;
-    endDate: string;
-  };
-  onFiltersChange: (filters: { category: string; startDate: string; endDate: string }) => void;
+  filters: ExpenseFilterState;
+  onChange: (updates: Partial<ExpenseFilterState>) => void;
+  onReset: () => void;
+  applyPreset: (preset: DateRangePreset) => void;
+  toggleSortDirection: () => void;
+  resultCount: number;
+  totalCount: number;
 }
 
-const ExpenseFilters: React.FC<ExpenseFiltersProps> = ({ filters, onFiltersChange }) => {
-  const handleFilterChange = (key: keyof typeof filters, value: string) => {
-    onFiltersChange({
-      ...filters,
-      [key]: value,
-    });
-  };
+const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
+  { value: 'date', label: 'Date' },
+  { value: 'amount', label: 'Amount' },
+  { value: 'category', label: 'Category' },
+  { value: 'description', label: 'Description' },
+];
 
-  const clearFilters = () => {
-    onFiltersChange({
-      category: 'all',
-      startDate: '',
-      endDate: '',
-    });
-  };
+const ExpenseFilters: React.FC<ExpenseFiltersProps> = ({
+  filters,
+  onChange,
+  onReset,
+  applyPreset,
+  toggleSortDirection,
+  resultCount,
+  totalCount,
+}) => {
+  const { formatMoneyWhole } = useSettings();
 
-  const hasActiveFilters = filters.category !== 'all' || filters.startDate || filters.endDate;
+  const activeCount = countActiveFilters(filters);
+
+  const hasActive =
+    activeCount > 0 ||
+    filters.sortKey !== 'date' ||
+    filters.sortDirection !== 'desc';
+
+  const chips: string[] = [];
+
+  if (filters.search.trim()) {
+    chips.push(`"${filters.search.trim()}"`);
+  }
+
+  if (filters.category !== 'all') {
+    chips.push(filters.category);
+  }
+
+  if (filters.startDate) {
+    chips.push(`From ${formatDisplayDate(filters.startDate)}`);
+  }
+
+  if (filters.endDate) {
+    chips.push(`To ${formatDisplayDate(filters.endDate)}`);
+  }
+
+  if (filters.minAmount) {
+    chips.push(
+      `Min ${formatMoneyWhole(parseFloat(filters.minAmount) || 0)}`
+    );
+  }
+
+  if (filters.maxAmount) {
+    chips.push(
+      `Max ${formatMoneyWhole(parseFloat(filters.maxAmount) || 0)}`
+    );
+  }
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center">
-            <Filter className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-slate-900">Filter Expenses</h3>
-            <p className="text-sm text-slate-600">Refine your expense view</p>
-          </div>
-        </div>
-        {hasActiveFilters && (
+    <SectionCard
+      icon={Filter}
+      gradient="from-indigo-600 to-purple-600"
+      title="Filter Expenses"
+      subtitle={`Showing ${resultCount} of ${totalCount}`}
+      titleAs="h2"
+      action={
+        hasActive ? (
           <button
-            onClick={clearFilters}
-            className="flex items-center gap-2 px-3 py-2 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg font-medium transition-all duration-200 self-start sm:self-auto"
+            onClick={onReset}
+            className="flex w-fit shrink-0 items-center gap-2 rounded-lg px-3 py-2 font-medium text-indigo-600 transition-colors hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-500/10"
           >
-            <X className="w-4 h-4" />
-            Clear All
+            <X className="h-4 w-4" />
+            Reset ({activeCount})
           </button>
-        )}
-      </div>
+        ) : undefined
+      }
+    >
+      {/* Quick Range */}
+      <div className="space-y-3">
+        <span className="block text-sm font-medium text-slate-600 dark:text-slate-400">
+          Quick range
+        </span>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Category Filter */}
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">
-            Category
-          </label>
-          <div className="relative">
-            <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <select
-              value={filters.category}
-              onChange={(e) => handleFilterChange('category', e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white text-sm sm:text-base"
+        <div className="flex flex-wrap gap-2">
+          {DATE_RANGE_PRESETS.map((preset) => (
+            <button
+              key={preset.value}
+              onClick={() => applyPreset(preset.value)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
             >
-              <option value="all">All Categories</option>
-              {CATEGORIES.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Start Date Filter */}
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">
-            From Date
-          </label>
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="date"
-              value={filters.startDate}
-              onChange={(e) => handleFilterChange('startDate', e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 text-sm sm:text-base"
-            />
-          </div>
-        </div>
-
-        {/* End Date Filter */}
-        <div className="sm:col-span-2 lg:col-span-1">
-          <label className="block text-sm font-semibold text-slate-700 mb-2">
-            To Date
-          </label>
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="date"
-              value={filters.endDate}
-              onChange={(e) => handleFilterChange('endDate', e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 text-sm sm:text-base"
-            />
-          </div>
+              {preset.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {hasActiveFilters && (
-        <div className="mt-6 p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
-          <div className="flex flex-wrap items-center gap-2 text-sm text-indigo-700">
-            <Filter className="w-4 h-4 flex-shrink-0" />
-            <span className="font-semibold">Active filters:</span>
-            {filters.category !== 'all' && (
-              <span className="px-2 py-1 bg-indigo-100 rounded-lg font-medium">
-                {filters.category}
-              </span>
-            )}
-            {filters.startDate && (
-              <span className="px-2 py-1 bg-indigo-100 rounded-lg font-medium">
-                From: {new Date(filters.startDate).toLocaleDateString()}
-              </span>
-            )}
-            {filters.endDate && (
-              <span className="px-2 py-1 bg-indigo-100 rounded-lg font-medium">
-                To: {new Date(filters.endDate).toLocaleDateString()}
-              </span>
-            )}
-          </div>
+      {/* Filters */}
+      <div className="grid grid-cols-1 gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-12">
+        {/* Search */}
+        <Field
+          label="Search"
+          htmlFor="filter-search"
+          icon={Search}
+          className="sm:col-span-2 lg:col-span-6"
+        >
+          <Input
+            id="filter-search"
+            type="search"
+            value={filters.search}
+            onChange={(event) =>
+              onChange({ search: event.target.value })
+            }
+            placeholder="Search description, merchant or notes..."
+          />
+        </Field>
+
+        {/* Category */}
+        <Field
+          label="Category"
+          htmlFor="filter-category"
+          icon={Tag}
+          className="sm:col-span-2 lg:col-span-6"
+        >
+          <Select
+            id="filter-category"
+            value={filters.category}
+            onChange={(event) =>
+              onChange({
+                category:
+                  event.target.value as ExpenseFilterState['category'],
+              })
+            }
+          >
+            <option value="all">All Categories</option>
+
+            {CATEGORIES.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        {/* From Date */}
+        <Field
+          label="From date"
+          htmlFor="filter-start"
+          className="lg:col-span-3"
+        >
+          <Input
+            id="filter-start"
+            type="date"
+            value={filters.startDate}
+            onChange={(event) =>
+              onChange({ startDate: event.target.value })
+            }
+          />
+        </Field>
+
+        {/* To Date */}
+        <Field
+          label="To date"
+          htmlFor="filter-end"
+          className="lg:col-span-3"
+        >
+          <Input
+            id="filter-end"
+            type="date"
+            value={filters.endDate}
+            onChange={(event) =>
+              onChange({ endDate: event.target.value })
+            }
+          />
+        </Field>
+
+        {/* Amount Range */}
+        <FieldSet
+          label="Amount range"
+          hint="Leave blank for no limit"
+          className="lg:col-span-6"
+        >
+          <FieldGroup>
+            <Input
+              id="filter-min"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              value={filters.minAmount}
+              onChange={(event) =>
+                onChange({ minAmount: event.target.value })
+              }
+              placeholder="Min"
+              aria-label="Minimum amount"
+            />
+
+            <span className="shrink-0 px-1 text-xs font-medium text-slate-400 dark:text-slate-500">
+              to
+            </span>
+
+            <Input
+              id="filter-max"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              value={filters.maxAmount}
+              onChange={(event) =>
+                onChange({ maxAmount: event.target.value })
+              }
+              placeholder="Max"
+              aria-label="Maximum amount"
+            />
+          </FieldGroup>
+        </FieldSet>
+      </div>
+
+      {/* Sort */}
+      <div className="border-t border-slate-200 pt-6 dark:border-slate-700">
+        <div className="mb-3 flex items-center gap-2">
+          <ArrowUpDown className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+
+          <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+            Sort by
+          </span>
         </div>
+
+        <div className="flex flex-wrap gap-2">
+          {SORT_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              onClick={() =>
+                onChange({
+                  sortKey: option.value,
+                  sortDirection:
+                    filters.sortKey === option.value
+                      ? filters.sortDirection
+                      : 'desc',
+                })
+              }
+              aria-pressed={filters.sortKey === option.value}
+              className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                filters.sortKey === option.value
+                  ? 'border-indigo-600 bg-indigo-600 text-white'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+
+          <button
+            onClick={toggleSortDirection}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            aria-label={`Sort ${
+              filters.sortDirection === 'asc'
+                ? 'descending'
+                : 'ascending'
+            }`}
+          >
+            {filters.sortDirection === 'asc' ? (
+              <ArrowUp className="h-3.5 w-3.5" />
+            ) : (
+              <ArrowDown className="h-3.5 w-3.5" />
+            )}
+
+            {filters.sortDirection === 'asc'
+              ? 'Ascending'
+              : 'Descending'}
+          </button>
+        </div>
+      </div>
+
+      {/* Active Filters */}
+      {chips.length > 0 && (
+        <Alert
+          tone="indigo"
+          icon={Filter}
+          bodyClassName="flex flex-wrap items-center gap-2 text-sm text-indigo-700 dark:text-indigo-300"
+        >
+          <span className="font-semibold">Active filters:</span>
+
+          {chips.map((chip) => (
+            <span
+              key={chip}
+              className="rounded-lg bg-indigo-100 px-2.5 py-1.5 font-medium dark:bg-indigo-500/20"
+            >
+              {chip}
+            </span>
+          ))}
+        </Alert>
       )}
-    </div>
+    </SectionCard>
   );
 };
 
